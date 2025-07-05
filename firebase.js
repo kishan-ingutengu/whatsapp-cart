@@ -52,11 +52,45 @@ async function getCatalog() {
   return snapshot.docs.map(doc => doc.data());
 }
 
+async function saveAddressToOrder(userId, address) {
+  const snapshot = await db.collection('orders')
+    .where('from', '==', userId)
+    .where('status', '==', 'PENDING')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get();
+
+  if (!snapshot.empty) {
+    const docRef = snapshot.docs[0].ref;
+    await docRef.update({ address });
+    console.log('📍 Address saved to order');
+  }
+}
+
+async function getPendingOrder(userId) {
+  const snapshot = await db.collection('orders')
+    .where('from', '==', userId)
+    .where('status', '==', 'PENDING')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get();
+
+  if (!snapshot.empty) {
+    const doc = snapshot.docs[0];
+    return { ...doc.data(), id: doc.id };
+  }
+
+  return null;
+}
+
+
 module.exports = {
   getCart,
   updateCart,
   clearCart,
   getMenuMessage,
   saveOrder,
-  getCatalog
+  getCatalog,
+  saveAddressToOrder,
+  getPendingOrder
 };

@@ -1,9 +1,12 @@
 const { makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
-const { getCart, updateCart, clearCart, getMenuMessage, saveOrder, getCatalog } = require('./firebase');
+const {
+  getCart, updateCart, clearCart,
+  getMenuMessage, saveOrder, getCatalog,
+  saveAddressToOrder, getPendingOrder
+} = require('./firebase');
 const { createPaymentLink } = require('./payment');
 
-// Normalize user ID for Firestore
 function normalizeId(id) {
   return id.split('@')[0];
 }
@@ -13,13 +16,8 @@ async function startBot() {
   const sock = makeWASocket({ auth: state });
 
   sock.ev.on('connection.update', ({ connection, qr }) => {
-    if (qr) {
-      console.log('📱 Scan QR:\n');
-      qrcode.generate(qr, { small: true });
-    }
-    if (connection === 'open') {
-      console.log('✅ WhatsApp connected!');
-    }
+    if (qr) qrcode.generate(qr, { small: true });
+    if (connection === 'open') console.log('✅ WhatsApp connected!');
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -34,24 +32,23 @@ async function startBot() {
     const text =
       msg.message?.conversation?.trim() ||
       msg.message?.extendedTextMessage?.text?.trim();
-
     if (!text) return;
 
-    console.log(`📩 Received from ${sender}: ${text}`);
     const lowerText = text.toLowerCase();
-
     const catalog = await getCatalog();
     if (!catalog || catalog.length === 0) {
       await sock.sendMessage(senderRaw, { text: '❌ Catalog is empty. Please try again later.' });
       return;
     }
 
+    // MENU
     const menuTriggers = ['hi', 'menu', 'start', 'hello', 'help', 'commands', 'order', 'items', 'list', 'show menu', 'show items'];
     if (menuTriggers.includes(lowerText)) {
       await sock.sendMessage(senderRaw, { text: await getMenuMessage() });
       return;
     }
 
+    // VIEW CART
     if (lowerText === 'view cart') {
       const cart = await getCart(sender);
       if (!cart || Object.keys(cart).length === 0) {
@@ -59,7 +56,6 @@ async function startBot() {
       } else {
         let summary = '*🛒 Your Cart:*\n\n';
         let total = 0;
-
         for (const id in cart) {
           const item = catalog.find(i => i.id == id);
           if (!item) continue;
@@ -68,13 +64,13 @@ async function startBot() {
           total += cost;
           summary += `• ${item.name} × ${qty} = ₹${cost}\n`;
         }
-
         summary += `\n💰 *Total: ₹${total}*`;
         await sock.sendMessage(senderRaw, { text: summary });
       }
       return;
     }
 
+    // CHECKOUT - Save order and ask for address
     if (lowerText === 'checkout') {
       const cart = await getCart(sender);
       if (!cart || Object.keys(cart).length === 0) {
@@ -84,7 +80,6 @@ async function startBot() {
 
       let items = [];
       let total = 0;
-
       for (const id in cart) {
         const item = catalog.find(i => i.id == id);
         if (!item) continue;
@@ -102,29 +97,51 @@ async function startBot() {
         createdAt: new Date().toISOString()
       };
 
-      const orderId = await saveOrder(order);
-      const paymentLink = await createPaymentLink(total, orderId);
-
+      await saveOrder(order);
       await sock.sendMessage(senderRaw, {
-        text: `🧾 *Order Summary:*\n${items.map(i => `• ${i.name} × ${i.quantity} = ₹${i.total}`).join('\n')}\n\n💰 *Total: ₹${total}*\n\n🔗 *Pay here:* ${paymentLink}\n\nReply with *PAID* once payment is done.`
+        text: '📍 Please provide your delivery address in this format:\n\n_address: villa 256, street 59_'
       });
-
       await clearCart(sender);
       return;
     }
 
+    // ADDRESS handling
+    if (lowerText.startsWith('address:')) {
+      const address = text.split('address:')[1].trim();
+      if (!address) {
+        await sock.sendMessage(senderRaw, { text: '❌ Please provide a valid address like:\n_address: villa 256, street 59_' });
+        return;
+      }
+
+      const order = await getPendingOrder(senderRaw);
+      if (!order) {
+        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
+        return;
+      }
+
+      await saveAddressToOrder(senderRaw, address);
+
+      const paymentLink = await createPaymentLink(order.total, order.id);
+      await sock.sendMessage(senderRaw, {
+        text: `📍 Address saved!\n\n🧾 *Order Summary:*\n${order.items.map(i => `• ${i.name} × ${i.quantity} = ₹${i.total}`).join('\n')}\n\n💰 *Total: ₹${order.total}*\n\n🔗 *Pay here:* ${paymentLink}\n\nReply with *PAID* once payment is done.`
+      });
+      return;
+    }
+
+    // PAYMENT CONFIRMATION
     if (lowerText === 'paid') {
       await sock.sendMessage(senderRaw, { text: '✅ Payment received! Your order is confirmed. 🍽️' });
       return;
     }
 
+    // CLEAR CART
     if (lowerText === 'clear cart') {
       await clearCart(sender);
       await sock.sendMessage(senderRaw, { text: '🗑️ Your cart has been cleared' });
       return;
     }
 
-    // Parse custom item text: "Regular Idli 2, Uddin Vada 1"
+    // PARSE TEXT INPUT (ex: Regular Idli 2, Uddin Vada 1)
     try {
       const cart = await getCart(sender);
       const items = text.split(',').map(item => item.trim());
