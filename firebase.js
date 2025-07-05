@@ -67,6 +67,22 @@ async function saveAddressToOrder(userId, address) {
   }
 }
 
+async function saveDeliveryTimeToOrder(userId, deliveryTime) {
+  const snapshot = await db.collection('orders')
+    .where('from', '==', userId)
+    .where('status', '==', 'PENDING')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get();
+
+  if (!snapshot.empty) {
+    const docRef = snapshot.docs[0].ref;
+    await docRef.update({ deliveryTime });
+    console.log('⏰ Delivery time saved to order');
+  }
+}
+
+
 async function getPendingOrder(userId) {
   const snapshot = await db.collection('orders')
     .where('from', '==', userId)
@@ -92,5 +108,6 @@ module.exports = {
   saveOrder,
   getCatalog,
   saveAddressToOrder,
+  saveDeliveryTimeToOrder,
   getPendingOrder
 };

@@ -3,13 +3,15 @@ const qrcode = require('qrcode-terminal');
 const {
   getCart, updateCart, clearCart,
   getMenuMessage, saveOrder, getCatalog,
-  saveAddressToOrder, getPendingOrder
+  saveAddressToOrder, getPendingOrder, saveDeliveryTimeToOrder
 } = require('./firebase');
 const { createPaymentLink } = require('./payment');
 
 function normalizeId(id) {
   return id.split('@')[0];
 }
+
+const userState = {}; // to track where user is (waiting for address / time)
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
@@ -41,14 +43,44 @@ async function startBot() {
       return;
     }
 
-    // MENU
+    // === USER STATE HANDLING ===
+    if (userState[sender] === 'awaiting_address') {
+      const order = await getPendingOrder(senderRaw);
+      if (!order) {
+        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
+        delete userState[sender];
+        return;
+      }
+      await saveAddressToOrder(senderRaw, text);
+      userState[sender] = 'awaiting_delivery_time';
+      await sock.sendMessage(senderRaw, { text: '⏰ Please share your preferred delivery time (e.g., "by 1:30 PM", "ASAP", etc.)' });
+      return;
+    }
+
+    if (userState[sender] === 'awaiting_delivery_time') {
+      const order = await getPendingOrder(senderRaw);
+      if (!order) {
+        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
+        delete userState[sender];
+        return;
+      }
+      await saveDeliveryTimeToOrder(senderRaw, text);
+      const paymentLink = await createPaymentLink(order.total, order.id);
+      await sock.sendMessage(senderRaw, {
+        text: `✅ Address & Delivery Time saved!\n\n🧾 *Order Summary:*\n${order.items.map(i => `• ${i.name} × ${i.quantity} = ₹${i.total}`).join('\n')}\n\n💰 *Total: ₹${order.total}*\n\n🔗 *Pay here:* ${paymentLink}\n\nReply with *PAID* once payment is done.`
+      });
+      delete userState[sender];
+      return;
+    }
+
+    // === MENU ===
     const menuTriggers = ['hi', 'menu', 'start', 'hello', 'help', 'commands', 'order', 'items', 'list', 'show menu', 'show items'];
     if (menuTriggers.includes(lowerText)) {
       await sock.sendMessage(senderRaw, { text: await getMenuMessage() });
       return;
     }
 
-    // VIEW CART
+    // === VIEW CART ===
     if (lowerText === 'view cart') {
       const cart = await getCart(sender);
       if (!cart || Object.keys(cart).length === 0) {
@@ -70,7 +102,7 @@ async function startBot() {
       return;
     }
 
-    // CHECKOUT - Save order and ask for address
+    // === CHECKOUT ===
     if (lowerText === 'checkout') {
       const cart = await getCart(sender);
       if (!cart || Object.keys(cart).length === 0) {
@@ -98,50 +130,29 @@ async function startBot() {
       };
 
       await saveOrder(order);
-      await sock.sendMessage(senderRaw, {
-        text: '📍 Please provide your delivery address in this format:\n\n_address: villa 256, street 59_'
-      });
       await clearCart(sender);
-      return;
-    }
 
-    // ADDRESS handling
-    if (lowerText.startsWith('address:')) {
-      const address = text.split('address:')[1].trim();
-      if (!address) {
-        await sock.sendMessage(senderRaw, { text: '❌ Please provide a valid address like:\n_address: villa 256, street 59_' });
-        return;
-      }
-
-      const order = await getPendingOrder(senderRaw);
-      if (!order) {
-        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
-        return;
-      }
-
-      await saveAddressToOrder(senderRaw, address);
-
-      const paymentLink = await createPaymentLink(order.total, order.id);
+      userState[sender] = 'awaiting_address';
       await sock.sendMessage(senderRaw, {
-        text: `📍 Address saved!\n\n🧾 *Order Summary:*\n${order.items.map(i => `• ${i.name} × ${i.quantity} = ₹${i.total}`).join('\n')}\n\n💰 *Total: ₹${order.total}*\n\n🔗 *Pay here:* ${paymentLink}\n\nReply with *PAID* once payment is done.`
+        text: '📍 Please share your delivery address:'
       });
       return;
     }
 
-    // PAYMENT CONFIRMATION
+    // === PAYMENT CONFIRMATION ===
     if (lowerText === 'paid') {
       await sock.sendMessage(senderRaw, { text: '✅ Payment received! Your order is confirmed. 🍽️' });
       return;
     }
 
-    // CLEAR CART
+    // === CLEAR CART ===
     if (lowerText === 'clear cart') {
       await clearCart(sender);
       await sock.sendMessage(senderRaw, { text: '🗑️ Your cart has been cleared' });
       return;
     }
 
-    // PARSE TEXT INPUT (ex: Regular Idli 2, Uddin Vada 1)
+    // === ADD ITEMS ===
     try {
       const cart = await getCart(sender);
       const items = text.split(',').map(item => item.trim());
