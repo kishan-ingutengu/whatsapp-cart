@@ -1,7 +1,5 @@
-// 🔥 Firebase setup for Firestore-based cart
 const admin = require('firebase-admin');
 const serviceAccount = require('./credentials.json');
-const catalog = require('./catalog.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -10,53 +8,55 @@ admin.initializeApp({
 const db = admin.firestore();
 
 async function getCart(userId) {
-  try {
-    const ref = db.collection('carts').doc(userId);
-    const doc = await ref.get();
-    return doc.exists ? doc.data() : {};
-  } catch (err) {
-    console.error('❌ Error in getCart:', err);
-    return {};
-  }
+  const ref = db.collection('carts').doc(userId);
+  const doc = await ref.get();
+  return doc.exists ? doc.data() : {};
 }
 
 async function updateCart(userId, cart) {
-  try {
-    await db.collection('carts').doc(userId).set(cart);
-  } catch (err) {
-    console.error('❌ Error in updateCart:', err);
-  }
+  await db.collection('carts').doc(userId).set(cart);
 }
 
 async function clearCart(userId) {
-  try {
-    await db.collection('carts').doc(userId).delete();
-  } catch (err) {
-    console.error('❌ Error in clearCart:', err);
-  }
-}
-
-
-function getMenuMessage() {
-  let menu = '*🍽️ MENU:*\n';
-  catalog.forEach(item => {
-    menu += `*${item.id}.* ${item.name} - ₹${item.price}\n`;
-  });
-  menu += `\n💬 To order, send item(s) like *1*2* (itemId*quantity)`;
-  return menu;
+  await db.collection('carts').doc(userId).delete();
 }
 
 async function saveOrder(order) {
-  const orderRef = await db.collection('orders').add(order);
-  console.log('✅ Firestore write success');
-  return orderRef.id;
+  const ref = await db.collection('orders').add(order);
+  console.log('✅ Order saved with ID:', ref.id);
+  return ref.id;
 }
 
+async function getMenuMessage() {
+  const snapshot = await db.collection('catalog').where('quantity', '>', 0).get();
+
+  let menu = '*🍽️ MENU:*\n';
+  snapshot.forEach(doc => {
+    const item = doc.data();
+    menu += `*${item.id}.* ${item.name} - ₹${item.price}\n`;
+  });
+
+  menu += `\n📌 You can type item names followed by quantity, like:\n_Regular Idli 2, Uddin Vada 1_`;
+  menu += `\n\n🛠️ *Commands Available:*\n`;
+  menu += `• view cart\n`;
+  menu += `• checkout\n`;
+  menu += `• paid\n`;
+  menu += `• clear cart\n`;
+  menu += `• menu`;
+
+  return menu;
+}
+
+async function getCatalog() {
+  const snapshot = await db.collection('catalog').where('quantity', '>', 0).get();
+  return snapshot.docs.map(doc => doc.data());
+}
 
 module.exports = {
   getCart,
   updateCart,
   clearCart,
   getMenuMessage,
-  saveOrder
+  saveOrder,
+  getCatalog
 };
