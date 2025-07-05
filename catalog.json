@@ -1,0 +1,11 @@
+[
+  { "id": 1, "name": "Regular Idli with Chutney and Bombay Saagu (4Nos)", "price": 85 },
+  { "id": 2, "name": "Rava Idli with Chutney and Bombay Saagu (2Nos)", "price": 90 },
+  { "id": 3, "name": "Thatte Idli with Chutney and Bombay Saagu (2Nos)", "price": 30 },
+  { "id": 4, "name": "Masala Thatte Idli with Chutney and Bombay Saagu (2Nos)", "price": 40 },
+  { "id": 5, "name": "Ghee Pudi Thatte Idli with Chutney and Bombay Saagu (2Nos)", "price": 45 },
+  { "id": 6, "name": "Single Uddin Vada", "price": 45 },
+  { "id": 7, "name": "Khara Bath", "price": 55 },
+  { "id": 8, "name": "Kesari Bath", "price": 55 },
+  { "id": 9, "name": "Chow Chow Bath", "price": 105 }
+]
