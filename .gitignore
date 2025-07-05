@@ -41,6 +41,4 @@ next-env.d.ts
 
 certificates
 
-auth/
-
 credentials.json
