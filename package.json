@@ -1,19 +1,27 @@
 {
-  "name": "ingutengu-whatsapp-bot",
+  "name": "whatsapp-cloud-bot",
+  "type": "module",
+  "description": "A WhatsApp Cloud API bot for Ingu Tengu Cart",
+  "author": "Kishan H S",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "",
+    "directory": "whatsapp-cloud-bot"
+  },
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.18",
-    "dotenv": "^17.0.1",
+    "axios": "^1.10.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
     "firebase-admin": "^13.4.0",
-    "link-preview-js": "^3.1.0",
-    "qrcode-terminal": "^0.12.0",
+    "node-fetch": "^3.3.2",
     "razorpay": "^2.9.6"
-  },
-  "engines": {
-  "node": ">=20"
   }
 }

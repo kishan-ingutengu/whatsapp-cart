@@ -1,128 +1,187 @@
-const { makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
-const {
-  getCart, updateCart, clearCart,
-  getMenuMessage, saveOrder, getCatalog,
-  saveAddressToOrder, getPendingOrder, saveDeliveryTimeToOrder
-} = require('./firebase');
-const { createPaymentLink } = require('./payment');
+import express from 'express';
+import bodyParser from 'body-parser';
+import fetch from 'node-fetch';
+import dotenv from 'dotenv';
 
-function normalizeId(id) {
-  return id.split('@')[0];
+import {
+  getCart, updateCart, clearCart
+} from './services/cart.js';
+import {
+  getCatalog, getCatalogByType
+} from './services/catalog.js';
+import {
+  saveOrder, getPendingOrder,
+  saveAddressToOrder, saveDeliveryTimeToOrder
+} from './services/order.js';
+import { createPaymentLink } from './services/payment.js';
+import { sendMenuList } from './services/menu.js';
+
+dotenv.config();
+
+const app = express();
+const PORT = 3000;
+app.use(bodyParser.json());
+
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
+const userState = {};
+
+function sendMessage(to, text) {
+  return fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      text: { body: text }
+    })
+  });
 }
 
-const userState = {}; // to track where user is (waiting for address / time)
+function sendButtons(to, message) {
+  const url = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+  const body = {
+    messaging_product: "whatsapp",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: message },
+      action: {
+        buttons: [
+          { type: "reply", reply: { id: "menu", title: "➕ Add More" } },
+          { type: "reply", reply: { id: "view_cart", title: "🛒 View Cart" } },
+          { type: "reply", reply: { id: "checkout", title: "✅ Checkout" } }
+        ]
+      }
+    }
+  };
 
-async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth');
-  const sock = makeWASocket({ auth: state });
-
-  sock.ev.on('connection.update', ({ connection, qr }) => {
-    if (qr) qrcode.generate(qr, { small: true });
-    if (connection === 'open') console.log('✅ WhatsApp connected!');
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
   });
+}
 
-  sock.ev.on('creds.update', saveCreds);
+app.post('/webhook', async (req, res) => {
+  try {
+    const entry = req.body?.entry?.[0];
+    const messageObj = entry?.changes?.[0]?.value?.messages?.[0];
+    if (!messageObj) return res.sendStatus(200);
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
-
-    const senderRaw = msg.key.remoteJid;
-    const sender = normalizeId(senderRaw);
-
-    const text =
-      msg.message?.conversation?.trim() ||
-      msg.message?.extendedTextMessage?.text?.trim();
-    if (!text) return;
-
-    const lowerText = text.toLowerCase();
+    const from = messageObj.from;
     const catalog = await getCatalog();
-    if (!catalog || catalog.length === 0) {
-      await sock.sendMessage(senderRaw, { text: '❌ Catalog is empty. Please try again later.' });
-      return;
-    }
+    const interactive = messageObj?.interactive;
+    const msgType = messageObj?.type;
 
-    // === USER STATE HANDLING ===
-    if (userState[sender] === 'awaiting_address') {
-      const order = await getPendingOrder(senderRaw);
-      if (!order) {
-        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
-        delete userState[sender];
-        return;
+    // ✅ Handle both button replies & typed messages
+    let text = null;
+
+    if (msgType === 'text') {
+      const userTyped = messageObj.text.body.trim().toLowerCase();
+      if (['menu', '🛒 view cart', '➕ add more', '✅ checkout', '🗑️ clear cart'].includes(userTyped)) {
+        if (userTyped.includes('menu') || userTyped.includes('add')) text = 'menu';
+        else if (userTyped.includes('view') || userTyped.includes('cart')) text = 'view_cart';
+        else if (userTyped.includes('checkout')) text = 'checkout';
+        else if (userTyped.includes('clear')) text = 'clear_cart';
       }
-      await saveAddressToOrder(senderRaw, text);
-      userState[sender] = 'awaiting_delivery_time';
-      await sock.sendMessage(senderRaw, { text: '⏰ Please share your preferred delivery time (e.g., "by 1:30 PM", "ASAP", etc.)' });
-      return;
+    } else {
+      text = interactive?.button_reply?.id?.toLowerCase();
     }
 
-    if (userState[sender] === 'awaiting_delivery_time') {
-      const order = await getPendingOrder(senderRaw);
-      if (!order) {
-        await sock.sendMessage(senderRaw, { text: '⚠️ No pending order found. Type *checkout* to start again.' });
-        delete userState[sender];
-        return;
+    // 🛒 Add item from list
+    if (interactive?.type === "list_reply") {
+      await sendMessage(from, '⏳ Please wait...');
+      const selectedId = interactive.list_reply.id;
+      const itemId = selectedId.replace("add_item_", "");
+      const item = catalog.find(i => i.id == itemId);
+
+      if (item) {
+        const cart = await getCart(from);
+        cart[item.id] = (cart[item.id] || 0) + 1;
+        await updateCart(from, cart);
+        await sendButtons(from, `✅ Added *${item.name}* to your cart.\n\nWhat would you like to do next?`);
+        return res.sendStatus(200);
       }
-      await saveDeliveryTimeToOrder(senderRaw, text);
-      const paymentLink = await createPaymentLink(order.total, order.id);
-      await sock.sendMessage(senderRaw, {
-        text: `✅ Address & Delivery Time saved!\n\n🧾 *Order Summary:*\n${order.items.map(i => `• ${i.name} × ${i.quantity} = ₹${i.total}`).join('\n')}\n\n💰 *Total: ₹${order.total}*\n\n🔗 *Pay here:* ${paymentLink}\n\nReply with *PAID* once payment is done.`
-      });
-      delete userState[sender];
-      return;
     }
 
-    // === MENU ===
-    const menuTriggers = ['hi', 'menu', 'start', 'hello', 'help', 'commands', 'order', 'items', 'list', 'show menu', 'show items'];
-    if (menuTriggers.includes(lowerText)) {
-      await sock.sendMessage(senderRaw, { text: await getMenuMessage() });
-      return;
+    // 📍 Address
+    if (userState[from] === 'awaiting_address') {
+      await sendMessage(from, '⏳ Please wait...');
+      await saveAddressToOrder(from, messageObj.text.body.trim());
+      userState[from] = 'awaiting_time';
+      await sendMessage(from, '⏰ Please enter your preferred delivery time (e.g., 8:00 AM)');
+      return res.sendStatus(200);
     }
 
-    // === VIEW CART ===
-    if (lowerText === 'view cart') {
-      const cart = await getCart(sender);
+    // ⏰ Delivery time & payment
+    if (userState[from] === 'awaiting_time') {
+      if (userState[from] === 'processing_payment') {
+        await sendMessage(from, '⚠️ Please wait while we finish generating your payment link...');
+        return res.sendStatus(200);
+      }
+
+      userState[from] = 'processing_payment';
+
+      try {
+        await sendMessage(from, '⏳ Please wait...');
+        await saveDeliveryTimeToOrder(from, messageObj.text.body.trim());
+
+        const order = await getPendingOrder(from);
+        const summaryLines = order.items.map(item => `• ${item.name} × ${item.quantity} = ₹${item.total}`);
+        const summaryMessage = `✅ Order Summary:\n${summaryLines.join('\n')}\n\n💰 Total: ₹${order.total}`;
+        await sendMessage(from, summaryMessage);
+
+        await sendMessage(from, '⏳ Generating payment link...');
+        const paymentLink = await createPaymentLink(order.total, order.id);
+
+        await sendMessage(from, `💳 *Pay here:* ${paymentLink}`);
+        await sendButtons(from, `✅ Payment link generated!`);
+
+        await clearCart(from);
+        delete userState[from];
+        return res.sendStatus(200);
+      } catch (err) {
+        console.error('⚠️ Payment flow failed:', err);
+        await sendMessage(from, '⚠️ Something went wrong while processing your order. Please try again.');
+        delete userState[from];
+        return res.sendStatus(500);
+      }
+    }
+
+    // ✅ Checkout
+    if (text === 'checkout') {
+      if (userState[from]) {
+        await sendMessage(from, '⚠️ You’ve already initiated checkout. Please complete it before trying again.');
+        return res.sendStatus(200);
+      }
+
+      await sendMessage(from, '⏳ Checking your cart...');
+      const cart = await getCart(from);
       if (!cart || Object.keys(cart).length === 0) {
-        await sock.sendMessage(senderRaw, { text: '🛒 Your cart is empty.' });
-      } else {
-        let summary = '*🛒 Your Cart:*\n\n';
-        let total = 0;
-        for (const id in cart) {
-          const item = catalog.find(i => i.id == id);
-          if (!item) continue;
-          const qty = cart[id];
-          const cost = item.price * qty;
-          total += cost;
-          summary += `• ${item.name} × ${qty} = ₹${cost}\n`;
-        }
-        summary += `\n💰 *Total: ₹${total}*`;
-        await sock.sendMessage(senderRaw, { text: summary });
-      }
-      return;
-    }
-
-    // === CHECKOUT ===
-    if (lowerText === 'checkout') {
-      const cart = await getCart(sender);
-      if (!cart || Object.keys(cart).length === 0) {
-        await sock.sendMessage(senderRaw, { text: '🛒 Your cart is empty. Add items before checking out.' });
-        return;
+        await sendButtons(from, '🛒 Your cart is empty. Please add items before checking out.');
+        return res.sendStatus(200);
       }
 
-      let items = [];
-      let total = 0;
+      let items = [], total = 0;
       for (const id in cart) {
         const item = catalog.find(i => i.id == id);
-        if (!item) continue;
         const qty = cart[id];
-        const cost = item.price * qty;
-        total += cost;
-        items.push({ name: item.name, quantity: qty, total: cost });
+        const price = item.price * qty;
+        items.push({ name: item.name, quantity: qty, total: price });
+        total += price;
       }
 
       const order = {
-        from: senderRaw,
+        from,
         items,
         total,
         status: 'PENDING',
@@ -130,59 +189,105 @@ async function startBot() {
       };
 
       await saveOrder(order);
-      await clearCart(sender);
-
-      userState[sender] = 'awaiting_address';
-      await sock.sendMessage(senderRaw, {
-        text: '📍 Please share your delivery address:'
-      });
-      return;
+      userState[from] = 'awaiting_address';
+      await sendMessage(from, '📍 Please enter your delivery address:');
+      return res.sendStatus(200);
     }
 
-    // === PAYMENT CONFIRMATION ===
-    if (lowerText === 'paid') {
-      await sock.sendMessage(senderRaw, { text: '✅ Payment received! Your order is confirmed. 🍽️' });
-      return;
-    }
-
-    // === CLEAR CART ===
-    if (lowerText === 'clear cart') {
-      await clearCart(sender);
-      await sock.sendMessage(senderRaw, { text: '🗑️ Your cart has been cleared' });
-      return;
-    }
-
-    // === ADD ITEMS ===
-    try {
-      const cart = await getCart(sender);
-      const items = text.split(',').map(item => item.trim());
-      let foundAny = false;
-
-      for (const item of items) {
-        const match = item.match(/(.+?)\s+(\d+)/);
-        if (!match) continue;
-
-        const name = match[1].trim().toLowerCase();
-        const quantity = parseInt(match[2]);
-
-        const catalogItem = catalog.find(i => i.name.toLowerCase() === name);
-        if (!catalogItem) continue;
-
-        cart[catalogItem.id] = (cart[catalogItem.id] || 0) + quantity;
-        foundAny = true;
+    // 🛒 View Cart
+    if (text === 'view_cart') {
+      await sendMessage(from, '⏳ Fetching your cart...');
+      const cart = await getCart(from);
+      if (!cart || Object.keys(cart).length === 0) {
+        await sendButtons(from, '🛒 Your cart is currently empty. Please add items first.');
+        return res.sendStatus(200);
       }
 
-      if (foundAny) {
-        await updateCart(sender, cart);
-        await sock.sendMessage(senderRaw, { text: '✅ Items added to cart.' });
-      } else {
-        await sock.sendMessage(senderRaw, { text: '❌ Could not understand your items. Please try again or type *menu* to see available items.' });
+      let total = 0;
+      let message = '*🛒 Your Cart:*\n';
+      for (const id in cart) {
+        const item = catalog.find(i => i.id == id);
+        if (!item) continue;
+        const qty = cart[id];
+        const cost = qty * item.price;
+        total += cost;
+        message += `• ${item.name} × ${qty} = ₹${cost}\n`;
       }
-    } catch (err) {
-      console.error('❌ Error:', err);
-      await sock.sendMessage(senderRaw, { text: '⚠️ Something went wrong. Please try again later.' });
-    }
-  });
-}
+      message += `\n💰 Total: ₹${total}`;
 
-startBot();
+      await sendButtons(from, message);
+      return res.sendStatus(200);
+    }
+
+    // 🗑️ Clear cart
+    if (text === 'clear_cart') {
+      await sendMessage(from, '⏳ Clearing your cart...');
+      const cart = await getCart(from);
+      if (!cart || Object.keys(cart).length === 0) {
+        await sendButtons(from, '🛒 Your cart is already empty.');
+        return res.sendStatus(200);
+      }
+
+      await clearCart(from);
+      await sendButtons(from, '🗑️ Your cart has been cleared.\n\nWhat would you like to do next?');
+      return res.sendStatus(200);
+    }
+
+    // 🍽️ Menu (based on current IST time)
+    if (text === 'menu') {
+      await sendMessage(from, '⏳ Checking menu availability...');
+      const now = new Date();
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istNow = new Date(now.getTime() + istOffset);
+
+      const hour = istNow.getUTCHours();
+      const minutes = istNow.getUTCMinutes();
+      const totalMinutes = hour * 60 + minutes;
+
+      let type = null;
+      if (totalMinutes >= 450 && totalMinutes <= 690) {
+        type = 'breakfast';
+      } else if (totalMinutes >= 1050 && totalMinutes <= 1170) {
+        type = 'chats';
+      }
+
+      if (!type) {
+        await sendMessage(
+          from,
+          '❌ Sorry, the menu is currently unavailable.\n\n🕒 Timings:\n• *Breakfast:* 7:30–11:30 AM\n• *Chats:* 5:30–8:30 PM'
+        );
+        return res.sendStatus(200);
+      }
+
+      const menu = await getCatalogByType(type);
+      await sendMenuList(from, menu);
+      return res.sendStatus(200);
+    }
+
+    // Fallback
+    await sendButtons(from, '⚠️ Please use the buttons to interact.');
+    return res.sendStatus(200);
+
+  } catch (error) {
+    console.error('❌ Webhook error:', error);
+    const from = req.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+    if (from) await sendMessage(from, '⚠️ Something went wrong. Please try again.');
+    return res.sendStatus(500);
+  }
+});
+
+app.get('/webhook', (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
