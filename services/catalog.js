@@ -6,50 +6,76 @@ import { db } from '../services/firebase.js';
  * - Breakfast: 7:30 AM to 11:30 AM IST
  * - Chats: 5:30 PM to 8:30 PM IST
  */
+import { collection, getDocs } from 'firebase/firestore';
+
+// export async function getCatalog() {
+//   const now = new Date();
+//   const istOffset = 5.5 * 60 * 60 * 1000;
+//   const istNow = new Date(now.getTime() + istOffset);
+
+//   const hours = istNow.getUTCHours();
+//   const minutes = istNow.getUTCMinutes();
+//   const currentTimeMins = hours * 60 + minutes;
+
+//   let path = null;
+
+//   if (currentTimeMins >= 450 && currentTimeMins <= 690) {
+//     path = 'catalog/breakfast/items';
+//   } else if (currentTimeMins >= 1050 && currentTimeMins <= 1230) {
+//     path = 'catalog/chats/items';
+//   } else {
+//     return [];
+//   }
+
+//   const colRef = collection(db, path);
+//   const snapshot = await getDocs(colRef);
+
+//   const items = [];
+//   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+//   return items;
+// }
+
 export async function getCatalog() {
   const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000; // 5 hours 30 mins in ms
+  const istOffset = 5.5 * 60 * 60 * 1000;
   const istNow = new Date(now.getTime() + istOffset);
 
   const hours = istNow.getUTCHours();
   const minutes = istNow.getUTCMinutes();
   const currentTimeMins = hours * 60 + minutes;
 
-  // Define time windows in minutes
-  const breakfastStart = 7 * 60 + 30;  // 7:30 AM
-  const breakfastEnd = 11 * 60 + 30;   // 11:30 AM
-  const chatsStart = 17 * 60 + 30;     // 5:30 PM
-  const chatsEnd = 20 * 60 + 30;       // 8:30 PM
+  let path = null;
 
-  let catalogPath = null;
-
-  if (currentTimeMins >= breakfastStart && currentTimeMins <= breakfastEnd) {
-    catalogPath = 'catalog/breakfast/items';
-  } else if (currentTimeMins >= chatsStart && currentTimeMins <= chatsEnd) {
-    catalogPath = 'catalog/chats/items';
+  // 5:30 PM = 17:30 = 1050 mins
+  // 10:30 PM = 22:30 = 1350 mins
+  if (currentTimeMins >= 1050 && currentTimeMins <= 1350) {
+    path = 'catalog/chats/items';
   } else {
-    return []; // outside both time windows
+    return [];
   }
 
-  // Fetch items from the correct Firestore collection
-  const snapshot = await db.collection(catalogPath).get();
+  const colRef = collection(db, path);
+  const snapshot = await getDocs(colRef);
+
   const items = [];
   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-
   return items;
 }
 
 export async function getCatalogByType(type) {
-  const catalogPath = type === 'breakfast'
+  const path = type === 'breakfast'
     ? 'catalog/breakfast/items'
     : type === 'chats'
     ? 'catalog/chats/items'
     : null;
 
-  if (!catalogPath) return [];
+  if (!path) return [];
 
-  const snapshot = await db.collection(catalogPath).get();
+  const colRef = collection(db, path);
+  const snapshot = await getDocs(colRef);
+
   const items = [];
   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
   return items;
 }
+
