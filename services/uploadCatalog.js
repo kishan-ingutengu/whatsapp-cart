@@ -22,33 +22,34 @@ const db = admin.firestore();
 
 // ----------------- 🔸 Breakfast Catalog -----------------
 const breakfastCatalog = [
-  { id: "1", name: "Regular Idli", price: 20, quantity: 10 },
-  { id: "2", name: "Thatte Idli", price: 25, quantity: 10 },
-  { id: "3", name: "Rava Idli", price: 30, quantity: 10 },
-  { id: "4", name: "Uddin Vada", price: 42, quantity: 10 },
-  { id: "5", name: "Set Dosa", price: 35, quantity: 10 },
-  { id: "6", name: "Masala Dosa", price: 50, quantity: 10 },
-  { id: "7", name: "Plain Dosa", price: 40, quantity: 10 },
-  { id: "8", name: "Kesari Bath", price: 25, quantity: 10 },
-  { id: "9", name: "Upma", price: 25, quantity: 10 },
-  { id: "10", name: "Pongal", price: 30, quantity: 10 }
+  { "id": "1", "name": "Regular Idli with Chutney and Bombay Saagu (4Nos)", "price": 85, quantity: 1 },
+  { "id": "2", "name": "Rava Idli with Chutney and Bombay Saagu (2Nos)", "price": 90, quantity: 1 },
+  { "id": "3", "name": "Thatte Idli with Chutney and Bombay Saagu (1No)", "price": 30, quantity: 1 },
+  { "id": "4", "name": "Masala Thatte Idli with Chutney", "price": 40, quantity: 1 },
+  { "id": "5", "name": "Ghee Pudi Thatte Idli with Chutney", "price": 45, quantity: 1 },
+  { "id": "6", "name": "Single Uddin Vada", "price": 40, quantity: 1 },
+  { "id": "7", "name": "Khara Bath", "price": 55, quantity: 1 },
+  { "id": "8", "name": "Kesari Bath", "price": 55, quantity: 1 },
+  { "id": "9", "name": "Chow Chow Bath", "price": 105, quantity: 1 },
+  { "id": "10", "name": "Lemon Rice", "price": 85, quantity: 1 },
+  { "id": "11", "name": "Rice Bath (Changing Menu as per group)", "price": 85, quantity: 1 },
 ];
 
 // ----------------- 🔹 Chats Catalog -----------------
 const chatsCatalog = [
-  { id: "1", name: "Masala Puri", price: 80, quantity: 10 },
-  { id: "2", name: "Pani Puri", price: 55, quantity: 10 },
-  { id: "3", name: "Dahi Puri", price: 85, quantity: 10 },
-  { id: "4", name: "Dahi Paapdi Chat", price: 95, quantity: 10 },
-  { id: "5", name: "Sev Puri", price: 85, quantity: 10 },
-  { id: "6", name: "Bhel Puri", price: 75, quantity: 10 },
-  { id: "7", name: "Kodubale Bhel", price: 90, quantity: 10 },
-  { id: "8", name: "Nippit Bhel", price: 90, quantity: 10 },
-  { id: "9", name: "Tikki Puri (Regular)", price: 70, quantity: 10 },
-  { id: "10", name: "Tikki Puri (Special)", price: 90, quantity: 10 },
-  { id: "11", name: "Tomato Slice Chaat", price: 70, quantity: 10 },
-  { id: "12", name: "Cucumber Slice Chaat", price: 70, quantity: 10 },
-  { id: "13", name: "Pineapple Slice Chaat", price: 80, quantity: 10 }
+  { id: "1", name: "Masala Puri", price: 80, quantity: 1 },
+  { id: "2", name: "Pani Puri", price: 55, quantity: 1 },
+  { id: "3", name: "Dahi Puri", price: 85, quantity: 1 },
+  { id: "4", name: "Dahi Paapdi Chat", price: 95, quantity: 1 },
+  { id: "5", name: "Sev Puri", price: 85, quantity: 1 },
+  { id: "6", name: "Bhel Puri", price: 75, quantity: 1 },
+  { id: "7", name: "Kodubale Bhel", price: 90, quantity: 1 },
+  { id: "8", name: "Nippit Bhel", price: 90, quantity: 1 },
+  { id: "9", name: "Tikki Puri (Regular)", price: 70, quantity: 1 },
+  { id: "10", name: "Tikki Puri (Special)", price: 90, quantity: 1 },
+  { id: "11", name: "Tomato Slice Chaat", price: 70, quantity: 1 },
+  { id: "12", name: "Cucumber Slice Chaat", price: 70, quantity: 1 },
+  { id: "13", name: "Pineapple Slice Chaat", price: 80, quantity: 1 }
 ];
 
 // ----------------- 🛠️ Upload Logic -----------------
