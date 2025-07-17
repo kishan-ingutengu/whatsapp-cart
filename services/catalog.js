@@ -1,69 +1,40 @@
 import { db } from '../services/firebase.js';
 
 /**
- * Determines which catalog to fetch based on IST time.
- * Supports:
- * - Breakfast: 7:30 AM to 11:30 AM IST
- * - Chats: 5:30 PM to 8:30 PM IST
+ * Returns the catalog based on IST time.
+ * Chats menu: 5:30 PM – 12:30 AM IST
  */
-import { collection, getDocs } from 'firebase-admin/firestore';
-
-// export async function getCatalog() {
-//   const now = new Date();
-//   const istOffset = 5.5 * 60 * 60 * 1000;
-//   const istNow = new Date(now.getTime() + istOffset);
-
-//   const hours = istNow.getUTCHours();
-//   const minutes = istNow.getUTCMinutes();
-//   const currentTimeMins = hours * 60 + minutes;
-
-//   let path = null;
-
-//   if (currentTimeMins >= 450 && currentTimeMins <= 690) {
-//     path = 'catalog/breakfast/items';
-//   } else if (currentTimeMins >= 1050 && currentTimeMins <= 1230) {
-//     path = 'catalog/chats/items';
-//   } else {
-//     return [];
-//   }
-
-//   const colRef = collection(db, path);
-//   const snapshot = await getDocs(colRef);
-
-//   const items = [];
-//   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-//   return items;
-// }
-
 export async function getCatalog() {
   const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+  const istOffset = 5.5 * 60 * 60 * 1000;
   const istNow = new Date(now.getTime() + istOffset);
 
   const hours = istNow.getUTCHours();
   const minutes = istNow.getUTCMinutes();
   const currentTimeMins = hours * 60 + minutes;
 
-  const startChats = 1050; // 5:30 PM
-  const endChats = 90;     // 12:30 AM (next day)
+  const startChats = 1050; // 5:30 PM IST = 17:30 = 1050 minutes
+  const endChats = 30;     // 12:30 AM IST = 0:30 = 30 minutes
 
   let path = null;
 
-  // Handle overnight window: 5:30 PM to 12:30 AM
+  // Chats catalog from 5:30 PM to 12:30 AM IST (overnight range)
   if (currentTimeMins >= startChats || currentTimeMins <= endChats) {
     path = 'catalog/chats/items';
   } else {
-    return [];
+    return []; // No menu available
   }
 
-  const colRef = collection(db, path);
-  const snapshot = await getDocs(colRef);
-
+  const snapshot = await db.collection(path).get();
   const items = [];
   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
   return items;
 }
 
+/**
+ * Manually fetches catalog based on type
+ * @param {'breakfast' | 'chats'} type
+ */
 export async function getCatalogByType(type) {
   const path = type === 'breakfast'
     ? 'catalog/breakfast/items'
@@ -73,11 +44,8 @@ export async function getCatalogByType(type) {
 
   if (!path) return [];
 
-  const colRef = collection(db, path);
-  const snapshot = await getDocs(colRef);
-
+  const snapshot = await db.collection(path).get();
   const items = [];
   snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
   return items;
 }
-
