@@ -6,7 +6,7 @@ import { db } from '../services/firebase.js';
  * - Breakfast: 7:30 AM to 11:30 AM IST
  * - Chats: 5:30 PM to 8:30 PM IST
  */
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase-admin/firestore';
 
 // export async function getCatalog() {
 //   const now = new Date();
