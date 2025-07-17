@@ -235,34 +235,41 @@ app.post('/webhook', async (req, res) => {
 
     // 🍽️ Menu (based on current IST time)
     if (text === 'menu') {
-      await sendMessage(from, '⏳ Checking menu availability...');
-      const now = new Date();
-      const istOffset = 5.5 * 60 * 60 * 1000;
-      const istNow = new Date(now.getTime() + istOffset);
+  await sendMessage(from, '⏳ Checking menu availability...');
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + istOffset);
 
-      const hour = istNow.getUTCHours();
-      const minutes = istNow.getUTCMinutes();
-      const totalMinutes = hour * 60 + minutes;
+  const hour = istNow.getUTCHours();
+  const minutes = istNow.getUTCMinutes();
+  const totalMinutes = hour * 60 + minutes;
 
-      let type = null;
-      if (totalMinutes >= 450 && totalMinutes <= 690) {
-        type = 'breakfast';
-      } else if (totalMinutes >= 1050 && totalMinutes <= 1170) {
-        type = 'chats';
-      }
+  let type = null;
+  const startBreakfast = 450; // 7:30 AM
+  const endBreakfast = 690;   // 11:30 AM
 
-      if (!type) {
-        await sendMessage(
-          from,
-          '❌ Sorry, the menu is currently unavailable.\n\n🕒 Timings:\n• *Breakfast:* 7:30–11:30 AM\n• *Chats:* 5:30–8:30 PM'
-        );
-        return res.sendStatus(200);
-      }
+  const startChats = 1050; // 5:30 PM
+  const endChats = 30;     // 12:30 AM (next day, so we handle overnight)
 
-      const menu = await getCatalogByType(type);
-      await sendMenuList(from, menu);
-      return res.sendStatus(200);
-    }
+  if (totalMinutes >= startBreakfast && totalMinutes <= endBreakfast) {
+    type = 'breakfast';
+  } else if (totalMinutes >= startChats || totalMinutes <= endChats) {
+    type = 'chats';
+  }
+
+  if (!type) {
+    await sendMessage(
+      from,
+      '❌ Sorry, the menu is currently unavailable.\n\n🕒 Timings:\n• *Breakfast:* 7:30–11:30 AM\n• *Chats:* 5:30 PM–12:30 AM'
+    );
+    return res.sendStatus(200);
+  }
+
+  const menu = await getCatalogByType(type);
+  await sendMenuList(from, menu);
+  return res.sendStatus(200);
+}
+
 
     // Fallback
     await sendButtons(from, '⚠️ Please use the buttons to interact.');
