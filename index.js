@@ -13,7 +13,7 @@ import {
   saveOrder, getPendingOrder,
   saveAddressToOrder, saveDeliveryTimeToOrder
 } from './services/order.js';
-import { createPaymentLink } from './services/payment.js';
+// import { createPaymentLink } from './services/payment.js';
 import { sendMenuList } from './services/menu.js';
 
 dotenv.config();
@@ -135,16 +135,35 @@ app.post('/webhook', async (req, res) => {
         await sendMessage(from, '⏳ Please wait...');
         await saveDeliveryTimeToOrder(from, messageObj.text.body.trim());
 
-        const order = await getPendingOrder(from);
-        const summaryLines = order.items.map(item => `• ${item.name} × ${item.quantity} = ₹${item.total}`);
-        const summaryMessage = `✅ Order Summary:\n${summaryLines.join('\n')}\n\n💰 Total: ₹${order.total}`;
-        await sendMessage(from, summaryMessage);
+const order = await getPendingOrder(from);
+const summaryLines = order.items.map(item => `• ${item.name} × ${item.quantity} = ₹${item.total}`);
+const summaryMessage = `✅ Order Summary:\n${summaryLines.join('\n')}\n\n💰 Total: ₹${order.total}\n\n📸 Please scan the QR in the next message to pay.`;
+await sendMessage(from, summaryMessage);
 
-        await sendMessage(from, '⏳ Generating payment link...');
-        const paymentLink = await createPaymentLink(order.total, order.id);
+// ✅ Send the QR image (replace UPI_QR_MEDIA_ID with your actual ID)
+await fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    messaging_product: "whatsapp",
+    to: from,
+    type: "image",
+    image: {
+      id: process.env.UPI_QR_MEDIA_ID,
+      caption: '📸 *Scan this QR to pay*\nUPI ID: yourupiid@upi'
+    }
+  })
+});
+
+
+        // await sendMessage(from, '⏳ Generating payment link...');
+        // const paymentLink = await createPaymentLink(order.total, order.id);
         
-        await sendMessage(from, `✅ Payment link generated!`);
-        await sendMessage(from, `💳 *Pay here:* ${paymentLink}`);
+        // await sendMessage(from, `✅ Payment link generated!`);
+        // await sendMessage(from, `💳 *Pay here:* ${paymentLink}`);
 
         await clearCart(from);
         delete userState[from];
