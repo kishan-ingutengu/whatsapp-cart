@@ -2,7 +2,7 @@ import { db } from '../services/firebase.js';
 
 /**
  * Returns the catalog based on IST time.
- * - Breakfast: 5:30 AM – 11:30 AM IST
+ * - Breakfast: 7:30 AM – 11:30 AM IST
  * - Chats: 5:30 PM – 8:30 PM IST
  */
 export async function getCatalog() {
@@ -34,7 +34,9 @@ export async function getCatalog() {
     const items = [];
     snapshot.forEach(doc => {
       const data = doc.data();
-      items.push(data); // ✅ use custom id from data, not Firestore doc id
+      if (typeof data.quantity === 'number' && data.quantity > 0) {
+        items.push(data); // ✅ Only include if quantity > 0
+      }
     });
     return items;
   } catch (err) {
@@ -61,7 +63,9 @@ export async function getCatalogByType(type) {
     const items = [];
     snapshot.forEach(doc => {
       const data = doc.data();
-      items.push(data); // ✅ use custom id from Firestore data
+      if (typeof data.quantity === 'number' && data.quantity > 0) {
+        items.push(data); // ✅ Only include if quantity > 0
+      }
     });
     return items;
   } catch (err) {
