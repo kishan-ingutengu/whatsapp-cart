@@ -2,7 +2,8 @@ import { db } from '../services/firebase.js';
 
 /**
  * Returns the catalog based on IST time.
- * Chats menu: 5:30 PM – 12:30 AM IST
+ * - Breakfast: 5:30 AM – 11:30 AM IST
+ * - Chats: 5:30 PM – 8:30 PM IST
  */
 export async function getCatalog() {
   const now = new Date();
@@ -13,22 +14,33 @@ export async function getCatalog() {
   const minutes = istNow.getUTCMinutes();
   const currentTimeMins = hours * 60 + minutes;
 
-  const startChats = 1050; // 5:30 PM IST = 17:30 = 1050 minutes
-  const endChats = 30;     // 12:30 AM IST = 0:30 = 30 minutes
+  const startBreakfast = 450; // 7:30 AM
+  const endBreakfast = 690;   // 11:30 AM
+  const startChats = 1050;    // 5:30 PM
+  const endChats = 1170;      // 8:30 PM
 
   let path = null;
 
-  // Chats catalog from 5:30 PM to 12:30 AM IST (overnight range)
-  if (currentTimeMins >= startChats || currentTimeMins <= endChats) {
+  if (currentTimeMins >= startBreakfast && currentTimeMins <= endBreakfast) {
+    path = 'catalog/breakfast/items';
+  } else if (currentTimeMins >= startChats && currentTimeMins <= endChats) {
     path = 'catalog/chats/items';
   } else {
-    return []; // No menu available
+    return []; // Menu unavailable
   }
 
-  const snapshot = await db.collection(path).get();
-  const items = [];
-  snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-  return items;
+  try {
+    const snapshot = await db.collection(path).get();
+    const items = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      items.push(data); // ✅ use custom id from data, not Firestore doc id
+    });
+    return items;
+  } catch (err) {
+    console.error('🔥 Firebase getCatalog error:', err);
+    return [];
+  }
 }
 
 /**
@@ -44,8 +56,16 @@ export async function getCatalogByType(type) {
 
   if (!path) return [];
 
-  const snapshot = await db.collection(path).get();
-  const items = [];
-  snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-  return items;
+  try {
+    const snapshot = await db.collection(path).get();
+    const items = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      items.push(data); // ✅ use custom id from Firestore data
+    });
+    return items;
+  } catch (err) {
+    console.error('🔥 Firebase catalog fetch error:', err);
+    return [];
+  }
 }

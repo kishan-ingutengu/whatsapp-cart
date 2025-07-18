@@ -142,9 +142,9 @@ app.post('/webhook', async (req, res) => {
 
         await sendMessage(from, '⏳ Generating payment link...');
         const paymentLink = await createPaymentLink(order.total, order.id);
-
+        
+        await sendMessage(from, `✅ Payment link generated!`);
         await sendMessage(from, `💳 *Pay here:* ${paymentLink}`);
-        await sendButtons(from, `✅ Payment link generated!`);
 
         await clearCart(from);
         delete userState[from];
@@ -236,37 +236,52 @@ app.post('/webhook', async (req, res) => {
     // 🍽️ Menu (based on current IST time)
     if (text === 'menu') {
   await sendMessage(from, '⏳ Checking menu availability...');
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(now.getTime() + istOffset);
 
-  const hour = istNow.getUTCHours();
-  const minutes = istNow.getUTCMinutes();
-  const totalMinutes = hour * 60 + minutes;
+  try {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + istOffset);
 
-  let type = null;
-  const startBreakfast = 450; // 7:30 AM
-  const endBreakfast = 690;   // 11:30 AM
+    const hour = istNow.getUTCHours();
+    const minutes = istNow.getUTCMinutes();
+    const totalMinutes = hour * 60 + minutes;
 
-  const startChats = 1050; // 5:30 PM
-  const endChats = 30;     // 12:30 AM (next day, so we handle overnight)
+    let type = null;
+    const startBreakfast = 450; // 7:30 AM
+    const endBreakfast = 690;   // 11:30 AM
+    const startChats = 1050;    // 5:30 PM
+    const endChats = 1170;      // 8:30 PM
 
-  if (totalMinutes >= startBreakfast && totalMinutes <= endBreakfast) {
-    type = 'breakfast';
-  } else if (totalMinutes >= startChats || totalMinutes <= endChats) {
-    type = 'chats';
+    if (totalMinutes >= startBreakfast && totalMinutes <= endBreakfast) {
+      type = 'breakfast';
+    } else if (totalMinutes >= startChats && totalMinutes <= endChats) {
+      type = 'chats';
+    }
+
+    if (!type) {
+      await sendMessage(
+        from,
+        '❌ Sorry, the menu is currently unavailable.\n\n🕒 Timings:\n• *Breakfast:* 5:30–11:30 AM\n• *Chats:* 5:30–8:30 PM'
+      );
+      return res.sendStatus(200);
+    }
+
+    console.log(`📦 Fetching catalog for type: ${type}`);
+
+    const menu = await getCatalogByType(type);
+
+    console.log(`📦 Catalog received (${menu.length} items):`, menu);
+
+    if (!menu.length) {
+      await sendMessage(from, '⚠️ Menu is currently empty. Please try again later.');
+    } else {
+      await sendMenuList(from, menu);
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch/send menu:', error);
+    await sendMessage(from, '⚠️ Something went wrong. Please try again.');
   }
 
-  if (!type) {
-    await sendMessage(
-      from,
-      '❌ Sorry, the menu is currently unavailable.\n\n🕒 Timings:\n• *Breakfast:* 7:30–11:30 AM\n• *Chats:* 5:30 PM–12:30 AM'
-    );
-    return res.sendStatus(200);
-  }
-
-  const menu = await getCatalogByType(type);
-  await sendMenuList(from, menu);
   return res.sendStatus(200);
 }
 
