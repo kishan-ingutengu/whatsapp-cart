@@ -153,7 +153,7 @@ await fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
     type: "image",
     image: {
       id: process.env.UPI_QR_MEDIA_ID,
-      caption: '📸 *Scan this QR to pay*\nUPI ID: yourupiid@upi'
+      caption: '📸 *Scan this QR to pay*\nUPI ID: q459562038@ybl'
     }
   })
 });
@@ -193,6 +193,11 @@ await fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
       let items = [], total = 0;
       for (const id in cart) {
         const item = catalog.find(i => i.id == id);
+        if (!item) {
+          console.warn(`⚠️ Catalog item not found for ID: ${id}`);
+          continue;
+        }
+
         const qty = cart[id];
         const price = item.price * qty;
         items.push({ name: item.name, quantity: qty, total: price });
